@@ -1,0 +1,17 @@
+*.orig
+apps/data/
+*.obj
+*.3ds
+*.png
+*.ply
+*.mtl
+*.bag
+build/
+.*
+lib
+bin
+*.pyc
+*.yaml
+*.yml
+*~
+doc_config.py
