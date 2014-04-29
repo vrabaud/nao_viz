@@ -41,15 +41,6 @@ roslib.load_manifest('nao_dashboard')
 import dbus, gobject, dbus.glib
 from diagnostic_msgs.msg import *
 
-from nao_msgs.msg import BodyPoseAction, BodyPoseGoal
-import actionlib
-import std_srvs.srv
-
-#TODO
-#ID_INIT_POSE = wx.NewId()
-#ID_SIT_DOWN = wx.NewId()
-#ID_REMOVE_STIFFNESS = wx.NewId()
-
 #import avahi
 class avahi:
     DBUS_NAME = "org.freedesktop.Avahi"
@@ -74,7 +65,6 @@ class avahi:
 
 
 import std_msgs.msg
-import std_srvs.srv
 
 import rospy
 from rosgraph import rosenv
@@ -82,8 +72,9 @@ from rosgraph import rosenv
 from os import path
 import threading
 
-from status_control import StatusControl
-from power_state_control import PowerStateControl
+from .status_control import StatusControl
+from .power_state_control import PowerStateControl
+from .motors import Motors
 
 from rqt_robot_dashboard.dashboard import Dashboard
 from rqt_robot_dashboard.monitor_dash_widget import MonitorDashWidget
@@ -137,80 +128,24 @@ class NAODashboard(Dashboard):
         self._temp_head_button = StatusControl('CPU temperature', 'temperature_head')
 
         ## Motors
-        #self._motors_button = StatusControl(self.context, "Stiffness", "motor", icons_path, True)
-        #self._motors_button._ok = (wx.Bitmap(path.join(icons_path, "stiffness-off-untoggled.png"), wx.BITMAP_TYPE_PNG), 
-                    #wx.Bitmap(path.join(icons_path, "stiffness-off-toggled.png"), wx.BITMAP_TYPE_PNG))
-        #self._motors_button._warn = (wx.Bitmap(path.join(icons_path, "stiffness-partially-untoggled.png"), wx.BITMAP_TYPE_PNG), 
-                    #wx.Bitmap(path.join(icons_path, "stiffness-partially-toggled.png"), wx.BITMAP_TYPE_PNG))
-        #self._motors_button._error = (wx.Bitmap(path.join(icons_path, "stiffness-on-untoggled.png"), wx.BITMAP_TYPE_PNG), 
-                     #wx.Bitmap(path.join(icons_path, "stiffness-on-toggled.png"), wx.BITMAP_TYPE_PNG))
-        #self._motors_button._stale = (wx.Bitmap(path.join(icons_path, "stiffness-stale-untoggled.png"), wx.BITMAP_TYPE_PNG), 
-                    #wx.Bitmap(path.join(icons_path, "stiffness-stale-toggled.png"), wx.BITMAP_TYPE_PNG))
-        #self._motors_button.Bind(wx.EVT_LEFT_DOWN, self.on_motors_clicked)
+        self._motors_button = Motors(self.context)
 
         ## Battery State
         self._power_state_ctrl = PowerStateControl('NAO Battery')
 
         self._agg_sub = rospy.Subscriber('diagnostics_agg', DiagnosticArray, self.new_diagnostic_message)
         self._last_dashboard_message_time = 0.0
-        self.bodyPoseClient = actionlib.SimpleActionClient('body_pose', BodyPoseAction)
-        self.stiffnessEnableClient = rospy.ServiceProxy("body_stiffness/enable", std_srvs.srv.Empty)
-        self.stiffnessDisableClient = rospy.ServiceProxy("body_stiffness/disable", std_srvs.srv.Empty)
 
     def get_widgets(self):
         return [ [self._robot_combobox], 
-                [self._monitor, self._console, self._temp_joint_button, self._temp_head_button
-                 ], #self._motors_button,
+                [self._monitor, self._console, self._temp_joint_button, self._temp_head_button,
+                 self._motors_button],
                 [self._power_state_ctrl]
                 ]
 
     def shutdown_dashboard(self):
         self._agg_sub.unregister()
 
-    def on_motors_clicked(self, evt):      
-      menu = wx.Menu()
-      menu.Append(ID_INIT_POSE, "Init pose")
-      menu.Append(ID_SIT_DOWN, "Sit down && remove stiffness")
-      menu.Append(ID_REMOVE_STIFFNESS, "Remove stiffness immediately")
-      wx.EVT_MENU(self, ID_INIT_POSE, self.on_init_pose)
-      wx.EVT_MENU(self, ID_SIT_DOWN, self.on_sit_down)
-      wx.EVT_MENU(self, ID_REMOVE_STIFFNESS, self.on_remove_stiffness)
-                        
-      #subscriberFound = ... 
-      #menu.Enable(ID_INIT_POSE, subscriberFound);
-      #menu.Enable(ID_SIT_DOWN, subscriberFound);
-      #menu.Enable(ID_REMOVE_STIFFNESS, subscriberFound);      
-      self._motors_button.toggle(True)
-      self.PopupMenu(menu)
-      self._motors_button.toggle(False)
-      
-    def on_init_pose(self, evt):
-        self.stiffnessEnableClient.call()
-        self.bodyPoseClient.send_goal_and_wait(BodyPoseGoal(pose_name = 'init'))
-  
-    def on_sit_down(self, evt):
-        self.bodyPoseClient.send_goal_and_wait(BodyPoseGoal(pose_name = 'crouch'))
-        state = self.bodyPoseClient.get_state()
-        if state == actionlib.GoalStatus.SUCCEEDED:
-            self.stiffnessDisableClient.call()
-        else:
-            wx.MessageBox('crouch pose did not succeed: %s - cannot remove stiffness' % self.bodyPoseClient.get_goal_status_text(), 'Error')
-            rospy.logerror("crouch pose did not succeed: %s", self.bodyPoseClient.get_goal_status_text())
-
-  
-    def on_remove_stiffness(self, evt):
-      msg = wx.MessageDialog(self, 'Caution: Robot may fall. Continue to remove stiffness?', 'Warning', wx.YES_NO | wx.NO_DEFAULT | wx.CENTER | wx.ICON_EXCLAMATION)
-      if(msg.ShowModal() == wx.ID_YES):
-          self.stiffnessDisableClient.call()
-    
-    def on_halt_motors(self, evt):
-      halt = rospy.ServiceProxy("pr2_etherCAT/halt_motors", std_srvs.srv.Empty)
-       
-      try:
-        halt()
-      except rospy.ServiceException, e:
-        wx.MessageBox("Failed to halt the motors: service call failed with error: %s"%(e), "Error", wx.OK|wx.ICON_ERROR)
-      
     def new_diagnostic_message(self, msg):
         """
         callback to process dashboard_agg messages
